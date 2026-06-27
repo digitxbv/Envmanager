@@ -1,0 +1,44 @@
+# gitleaks config for the EnvManager OSS cutover audit.
+# Extends the default rule set; adds an allowlist for known non-secret matches.
+title = "EnvManager gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Files that legitimately contain key-shaped strings but no live secrets"
+paths = [
+  '''package-lock\.json''',
+  '''deno\.lock''',
+  '''(^|/)tests/''',
+  # Only the INTERNAL docs are allowlisted (planning notes contain key-shaped
+  # example strings). The public operator docs (docs/self-hosting/, docs/assets/)
+  # are NOT allowlisted, so the final gate still scans what ships publicly.
+  '''(^|/)docs/(superpowers|prds|launch|extracted-prompts)/''',
+  '''(^|/)docs/SYNC\.md''',
+  '''(^|/)docs/SECURITY-RELEASE\.md''',
+  '''types/database\.types\.ts''',
+  # Demo/seed/template/manifest files contain only fake or well-known default
+  # values by design (fictional "Lumina" company data, env templates, dev scripts).
+  '''(^|/)supabase/demo-seed\.sql''',
+  '''(^|/)supabase/seed\.sql''',
+  '''(^|/)\.env\.example''',
+  '''(^|/)package\.json''',
+  # PEM header/footer string literals used for PKCS#1->PKCS#8 conversion (no key body).
+  '''(^|/)supabase/functions/_shared/github-jwt\.ts''',
+  # BYO-credentials operator doc demonstrates `curl --user <id>:<secret>` against
+  # the operator's OWN provider — the example placeholders trip curl-auth-user.
+  '''(^|/)docs/self-hosting/bring-your-own-credentials\.md''',
+]
+regexes = [
+  # Local Supabase demo JWTs (anon + service_role) — deterministic, published in
+  # Supabase's own docs; not live secrets. Matched by signature (the prefix regex
+  # is not honored against the jwt rule's capture).
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIg''',
+  '''CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0''',
+  '''EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU''',
+  # Supabase *publishable* keys are public-by-design (browser-shipped, RLS-protected).
+  '''sb_publishable_[A-Za-z0-9_]+''',
+  # PostHog project API keys are public-by-design (shipped in client bundles).
+  '''phc_[A-Za-z0-9]+''',
+]

@@ -1,0 +1,10 @@
+{
+  "session_id": "60911d79-05fe-4628-b6e5-de2ac6c7c34f",
+  "tool_calls": 54,
+  "estimated_tokens": 18790,
+  "percentage": 9.395000000000001,
+  "modified_files": [],
+  "warned_70": false,
+  "warned_85": false,
+  "last_updated": "2026-02-19T21:20:01.118155+00:00"
+}

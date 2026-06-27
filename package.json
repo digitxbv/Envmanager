@@ -1,0 +1,59 @@
+{
+  "name": "envmanager",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "nuxt build",
+    "dev": "HOST=0.0.0.0 PORT=4400 nuxt dev",
+    "start": "node --import ./.output/server/sentry.server.config.mjs .output/server/index.mjs",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare",
+    "test": "vitest",
+    "test:unit": "vitest run tests/unit",
+    "test:e2e": "playwright test tests/e2e",
+    "test:trial-expiration": "curl -X POST http://localhost:54321/functions/v1/scheduled-trial-expiration -H 'Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU' -H 'Content-Type: application/json'"
+  },
+  "dependencies": {
+    "@headlessui/vue": "^1.7.19",
+    "@heroicons/vue": "^2.1.1",
+    "@nuxt/content": "^3.7.1",
+    "@nuxt/fonts": "^0.13.0",
+    "@nuxtjs/sitemap": "^8.0.15",
+    "@nuxtjs/supabase": "^2.0.1",
+    "@nuxtjs/tailwindcss": "^6.11.4",
+    "@pinia/nuxt": "^0.11.3",
+    "@sentry/nuxt": "^10.39.0",
+    "@vueuse/core": "^14.0.0",
+    "@vueuse/nuxt": "^14.0.0",
+    "better-sqlite3": "^12.4.1",
+    "chart.js": "^4.5.1",
+    "js-yaml": "^4.1.0",
+    "nuxt": "^4.3.1",
+    "pinia": "^3.0.3",
+    "posthog-js": "^1.261.6",
+    "vue-chartjs": "^5.3.3",
+    "vue-sonner": "^2.0.9",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@iconify-json/heroicons": "^1.2.3",
+    "@iconify-json/logos": "^1.2.10",
+    "@iconify-json/lucide": "^1.2.90",
+    "@iconify-json/mdi": "^1.2.3",
+    "@iconify-json/simple-icons": "^1.2.70",
+    "@nuxt/icon": "^2.2.1",
+    "@nuxtjs/color-mode": "^4.0.0",
+    "@playwright/test": "^1.58.2",
+    "@tailwindcss/typography": "^0.5.19",
+    "@types/js-yaml": "^4.0.9",
+    "@vitejs/plugin-vue": "^6.0.1",
+    "@vue/test-utils": "^2.4.6",
+    "baseline-browser-mapping": "^2.9.19",
+    "happy-dom": "^20.6.0",
+    "vitest": "^4.0.18"
+  }
+}

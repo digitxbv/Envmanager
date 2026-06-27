@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /dashboard/
+Disallow: /auth/
+Disallow: /admin/
+Disallow: /onboarding/
+Disallow: /api/
+
+Sitemap: https://envmanager.com/sitemap.xml

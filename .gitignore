@@ -1,0 +1,30 @@
+node_modules
+*.log*
+.nuxt
+.nitro
+.cache
+.output
+.data
+.env
+dist
+/secrets
+supabase/signing_key.json
+.DS_Store
+/.playwright-mcp
+playwright-report/index.html
+/test-results
+/playwright-report
+.sisyphus/notepads/
+.sisyphus/evidence/
+
+# Superpowers brainstorm scratch
+.superpowers/
+
+# Self-host runtime data (docker-compose volumes — never commit)
+volumes/db/data/
+volumes/storage/
+volumes/functions/
+
+# OSS pre-cutover secret-audit output (gitleaks findings — never commit; would
+# ship to the public subset since scripts/oss/ is kept)
+scripts/oss/.audit/

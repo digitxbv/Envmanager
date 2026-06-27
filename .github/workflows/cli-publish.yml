@@ -1,0 +1,79 @@
+name: Publish CLI to npm
+
+on:
+  push:
+    tags:
+      - 'cli-v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm for OIDC trusted publishing
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+        working-directory: packages/cli
+
+      - name: Build
+        run: npm run build
+        working-directory: packages/cli
+
+      - name: Verify package
+        run: npm pack --dry-run
+        working-directory: packages/cli
+
+      - name: Publish to npm
+        run: npm publish --access public
+        working-directory: packages/cli
+
+  update-homebrew:
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: shintaii/homebrew-tap
+          path: homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Extract version from tag
+        run: echo "VERSION=${GITHUB_REF_NAME#cli-v}" >> $GITHUB_ENV
+
+      - name: Compute tarball SHA256
+        run: |
+          TARBALL_URL="https://registry.npmjs.org/@envmanager-cli/cli/-/cli-${VERSION}.tgz"
+          echo "Waiting for npm registry..."
+          sleep 30
+          SHA256=$(curl -sL "$TARBALL_URL" | shasum -a 256 | cut -d' ' -f1)
+          echo "SHA256=$SHA256" >> $GITHUB_ENV
+          echo "Tarball: $TARBALL_URL"
+          echo "SHA256: $SHA256"
+
+      - name: Update formula
+        run: |
+          sed -i "s|url \".*\"|url \"https://registry.npmjs.org/@envmanager-cli/cli/-/cli-${VERSION}.tgz\"|" homebrew-tap/Formula/envmanager.rb
+          sed -i "s|sha256 \".*\"|sha256 \"${SHA256}\"|" homebrew-tap/Formula/envmanager.rb
+          cat homebrew-tap/Formula/envmanager.rb
+
+      - name: Commit and push
+        working-directory: homebrew-tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/envmanager.rb
+          git commit -m "Update envmanager to ${VERSION}" || { echo "No changes to commit"; exit 0; }
+          git push

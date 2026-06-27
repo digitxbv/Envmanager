@@ -1,0 +1,79 @@
+name: Release Image
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Optional image tag to publish (defaults to git ref)'
+        type: string
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: envmanager
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Lower-case the image namespace
+        id: image
+        run: echo "repo=${REGISTRY}/${OWNER,,}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+        env:
+          REGISTRY: ${{ env.REGISTRY }}
+          OWNER: ${{ github.repository_owner }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+
+      - name: Extract Docker metadata (tags & labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.image.outputs.repo }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=sha
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+            type=raw,value=${{ inputs.tag }},enable=${{ inputs.tag != '' }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push image to GHCR
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # This is the PUBLIC self-host image (ghcr.io/OWNER/envmanager).
+          # It must NOT ship any SaaS/tenant values baked in.
+          # The @nuxtjs/supabase module tolerates absent SUPABASE_URL/KEY at build
+          # time (verified: `env -u SUPABASE_URL -u SUPABASE_KEY npm run build` succeeds).
+          # All runtime values — SUPABASE_URL, SUPABASE_KEY, NUXT_PUBLIC_SITE_URL,
+          # POSTHOG_*, NUXT_PUBLIC_GITHUB_*, etc. — are injected by operators at
+          # container run time (see docker-compose.yml / .env.example).
+          build-args: |
+            NODE_ENV=production
+            EM_SELF_HOSTED=true
