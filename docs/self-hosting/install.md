@@ -63,6 +63,7 @@ If invitations and password-reset emails should be delivered, configure **SMTP**
 
 ## Next steps
 
+- [Deploy on Coolify or Dokploy](./deploy-paas.md) — one-click PaaS deploys instead of raw Compose.
 - [Configuration reference](./configuration.md) — every environment variable explained.
 - [Upgrading](./upgrade.md) — pulling new versions and applying database migrations safely.
 - [Key management](./key-management.md) — backing up and protecting the encryption keys that protect your secrets.
