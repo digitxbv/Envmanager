@@ -55,8 +55,5 @@
     "baseline-browser-mapping": "^2.9.19",
     "happy-dom": "^20.6.0",
     "vitest": "^4.0.18"
-  },
-  "overrides": {
-    "ws": "^8.21.0"
   }
 }
