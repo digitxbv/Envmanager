@@ -1,7 +1,6 @@
 <template>
-  <div class="marketing flex min-h-screen flex-col bg-background text-foreground">
-    <!-- Self-hosted instances drop the marketing chrome (nav/footer). -->
-    <header v-if="!selfHosted" class="glass-header sticky top-0 z-40">
+  <div class="marketing flex min-h-screen flex-col">
+    <header class="glass-header sticky top-0 z-40">
       <div class="container flex h-16 items-center justify-between">
         <div class="flex items-center gap-6">
           <NuxtLink to="/" class="group flex items-center gap-2.5 text-lg font-bold text-foreground">
@@ -23,7 +22,6 @@
           </nav>
         </div>
         <div class="flex items-center gap-3">
-          <ThemeToggle />
           <!-- Mobile menu button -->
            <button
              @click="mobileMenuOpen = !mobileMenuOpen"
@@ -124,15 +122,19 @@
         </div>
       </Transition>
     </header>
-    <main class="marketing flex-1">
-      <slot />
-    </main>
-    <MarketingFooter v-if="!selfHosted" />
+    <div class="marketing container flex-1 items-start md:grid md:grid-cols-[220px_minmax(0,1fr)] md:gap-6 lg:grid-cols-[240px_minmax(0,1fr)] lg:gap-10 py-8">
+      <aside class="fixed top-16 z-30 -ml-2 hidden h-[calc(100vh-4rem)] w-full shrink-0 md:sticky md:block overflow-y-auto">
+        <DocsSidebar />
+      </aside>
+      <main class="relative w-full">
+        <slot />
+      </main>
+    </div>
+    <MarketingFooter />
   </div>
 </template>
 
 <script setup>
-const { public: { selfHosted } } = useRuntimeConfig()
 const user = useSupabaseUser()
 const client = useSupabaseClient()
 const { $toast } = useNuxtApp()
@@ -147,11 +149,8 @@ const navLinks = [
   { to: '/blog', label: 'Blog' },
 ]
 
-const { logAuthEvent } = useAuthAudit()
-
 const signOut = async () => {
   try {
-    await logAuthEvent('logout', true)
     await client.auth.signOut()
     $toast.success('Signed out successfully')
     navigateTo('/')
