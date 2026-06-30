@@ -29,7 +29,7 @@
     "@nuxt/fonts": "^0.13.0",
     "@nuxt/icon": "^2.2.1",
     "@nuxtjs/color-mode": "^4.0.0",
-    "@nuxtjs/sitemap": "^8.0.15",
+    "@nuxtjs/sitemap": "^8.2.2",
     "@nuxtjs/supabase": "^2.0.1",
     "@nuxtjs/tailwindcss": "^6.11.4",
     "@pinia/nuxt": "^0.11.3",
