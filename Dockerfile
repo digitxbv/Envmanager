@@ -7,7 +7,11 @@ COPY package*.json ./
 COPY packages/cli/package*.json ./packages/cli/
 COPY packages/validate/package*.json ./packages/validate/
 
-RUN npm ci --silent
+# --include=dev: nuxt.config loads build-time modules (@nuxt/icon, @nuxtjs/color-mode,
+# @tailwindcss/typography, @iconify-json/*) that live in devDependencies. Build envs that
+# force NODE_ENV=production (Coolify/Dokploy/most PaaS) would otherwise drop them and
+# `npm run build` fails with "Could not load @nuxtjs/color-mode". The builder always needs them.
+RUN npm ci --silent --include=dev
 
 COPY . .
 
