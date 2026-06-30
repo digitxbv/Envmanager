@@ -57,14 +57,16 @@ You need [Docker](https://docs.docker.com/get-docker/) with Compose v2 (`docker 
 git clone https://github.com/digitxbv/envmanager.git
 cd envmanager
 
-# 2. Create your environment file from the template and fill in the required values
+# 2. Create your .env and generate the required secrets
 cp .env.example .env
-# Edit .env — at minimum set the Supabase keys and a strong app secret.
-# Make sure EM_SELF_HOSTED=true is set.
+./scripts/gen-secrets.sh   # fills the 8 required secrets, incl. the signed Supabase API keys
+# .env already has EM_SELF_HOSTED=true. SMTP, GitHub, and OAuth are all optional.
 
 # 3. Start the stack
 docker compose up
 ```
+
+`.env.example` ships with `replace-with-…` placeholders for **8 secrets** — including `ANON_KEY` and `SERVICE_ROLE_KEY`, which are JWTs that must be signed by your `JWT_SECRET`. `scripts/gen-secrets.sh` generates all of them (needs `openssl` and `node`). To do it by hand instead, see [docs/self-hosting/configuration.md](./docs/self-hosting/configuration.md).
 
 When the stack is healthy, open the app in your browser. The exact host port is defined in the Compose file shipped with the repo — see [docs/self-hosting/install.md](./docs/self-hosting/install.md) for the port and the first-run steps (creating your first organization and inviting your team).
 
