@@ -5,7 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 EnvManager is a B2B SaaS application for secure environment variable management built with:
-- **Frontend**: Nuxt 3, Vue 3, TypeScript
+- **Frontend**: Nuxt 4, Vue 3, TypeScript
 - **Styling**: Tailwind CSS with custom design system
 - **Backend**: Supabase (PostgreSQL + Auth)
 - **UI Components**: Custom Vue components with Headless UI
