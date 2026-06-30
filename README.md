@@ -9,7 +9,7 @@ Self-host it, or use the managed cloud. Store regular config and Vault-encrypted
 [![License: BSL 1.1](https://img.shields.io/badge/license-BSL%201.1-blue.svg)](./LICENSE)
 [![CLI on npm](https://img.shields.io/npm/v/%40envmanager-cli%2Fcli?label=%40envmanager-cli%2Fcli)](https://www.npmjs.com/package/@envmanager-cli/cli)
 [![Docker image](https://img.shields.io/badge/ghcr.io-envmanager-blue?logo=docker)](https://github.com/digitxbv/envmanager/pkgs/container/envmanager)
-[![Built with Nuxt](https://img.shields.io/badge/built%20with-Nuxt%203-00DC82?logo=nuxt.js)](https://nuxt.com)
+[![Built with Nuxt](https://img.shields.io/badge/built%20with-Nuxt%204-00DC82?logo=nuxt.js)](https://nuxt.com)
 [![Powered by Supabase](https://img.shields.io/badge/powered%20by-Supabase-3FCF8E?logo=supabase)](https://supabase.com)
 
 [Quickstart](#quickstart) · [Features](#features) · [Self-hosting docs](./docs/self-hosting/install.md) · [Hosted cloud](#hosted-vs-self-hosted) · [Security](./SECURITY.md) · [Contributing](./CONTRIBUTING.md)
@@ -30,7 +30,7 @@ value from a production tenant. See the launch-screenshots scripts for sanitized
 
 EnvManager is a multi-tenant web app for storing and distributing the configuration your applications need to run — both plain config values and sensitive secrets (API keys, database URLs, tokens). It gives a team one place to manage variables across projects and environments, with real access control, an audit trail, and one-click sync to the platforms you deploy on.
 
-It is built on **Nuxt 3** (Vue 3 + TypeScript) for the app and **Supabase** (PostgreSQL, Auth, Vault) for storage, authentication, and encryption. Secrets are encrypted at rest server-side using Supabase Vault.
+It is built on **Nuxt 4** (Vue 3 + TypeScript) for the app and **Supabase** (PostgreSQL, Auth, Vault) for storage, authentication, and encryption. Secrets are encrypted at rest server-side using Supabase Vault.
 
 > **Security model — read this:** EnvManager uses **server-side encryption** via Supabase Vault. Secret values are encrypted at rest in the database and decrypted on the server when an authorized user or token requests them. This is **not** a zero-knowledge / end-to-end-encrypted system: the server (and therefore whoever operates it) can decrypt secrets to serve them. If you self-host, *you* are that operator. See [SECURITY.md](./SECURITY.md) and [docs/self-hosting/key-management.md](./docs/self-hosting/key-management.md) for the full threat model and key-handling guidance.
 
@@ -113,7 +113,7 @@ Same product either way — the hosted plan is the convenient, supported, manage
 
 ## Tech stack
 
-- **Frontend / app:** Nuxt 3, Vue 3, TypeScript, Tailwind CSS
+- **Frontend / app:** Nuxt 4, Vue 3, TypeScript, Tailwind CSS
 - **Backend:** Supabase — PostgreSQL, Auth, Vault (encryption), Edge Functions, Row-Level Security
 - **CLI:** TypeScript, built with tsup, published to npm
 
