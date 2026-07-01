@@ -1,54 +1,57 @@
-# docker-compose.coolify.yml
-# EnvManager self-host stack, tuned for Coolify (https://coolify.io).
+# docker-compose.dokploy.yml
+# EnvManager self-host stack, tuned for Dokploy (https://dokploy.com).
 #
-# HOW THIS DIFFERS FROM docker-compose.yml (the bare-VM file):
-#   1. NO host `ports:` anywhere. Coolify puts every service on one internal
-#      network (they reach each other by name: db:5432, kong:8000, ...) and
-#      exposes the public ones through its own Traefik proxy. Publishing host
-#      ports here only collides with Coolify's own services (its Postgres owns
-#      host 5432, Traefik owns 8080, etc.).
-#   2. Only TWO services get a public domain — `app` and `kong` — via Coolify's
-#      "magic" env vars `SERVICE_URL_APP_3000` / `SERVICE_URL_KONG_8000`. Coolify
-#      generates an https domain for each and routes Traefik to that container
-#      port. `${SERVICE_URL_APP}` / `${SERVICE_URL_KONG}` then hold the full URL,
-#      referenced below wherever the app/auth need a browser-reachable address.
-#   3. `app` PULLS the published image (ghcr.io/digitxbv/envmanager) instead of
+# HOW THIS DIFFERS FROM docker-compose.yml (the bare-VM file) AND the Coolify one:
+#   1. NO host `ports:` anywhere. Dokploy runs every service on the stack's
+#      internal network (they reach each other by name: db:5432, kong:8000, ...)
+#      and exposes the public ones through its shared Traefik proxy. Publishing
+#      host ports here only collides with Dokploy's own services.
+#   2. NO magic env vars. Unlike Coolify (SERVICE_URL_*), Dokploy has nothing that
+#      auto-fills the public URLs. So YOU set the two public URLs by hand as env:
+#         APP_URL              -> your app domain   (e.g. https://envmanager.example.com)
+#         SUPABASE_PUBLIC_URL  -> your Kong domain  (e.g. https://api.example.com)
+#      Everything below reads those two vars wherever a browser-reachable address
+#      is needed. They MUST match the domains you attach in the Dokploy UI exactly.
+#   3. NO Traefik labels / dokploy-network in this file. You attach domains via the
+#      Dokploy UI "Domains" tab; Dokploy injects the labels and joins the service
+#      to dokploy-network automatically at deploy time (Preview Compose to verify).
+#   4. `app` PULLS the published image (ghcr.io/digitxbv/envmanager) instead of
 #      building — the image is already the EM_SELF_HOSTED=true SPA build, and all
 #      values are injected at runtime. No build step = fast deploys.
 #
-# SETUP (Coolify UI):
-#   - New Resource -> Docker Compose -> point at this repo, set this file as the
-#     compose path.
-#   - REQUIRED: Advanced -> enable "Preserve Repository During Deployment", then
-#     Save. The db-init service bind-mounts ./scripts and ./volumes from the repo;
-#     without this toggle Coolify builds from an ephemeral dir where those paths
-#     are missing, and db-init dies with exit 126 ("cannot execute" — bash is
-#     handed a phantom directory instead of the script). Save is required for the
-#     toggle to stick.
-#   - Paste the secrets from `./scripts/gen-secrets.sh` into the resource env
+# SETUP (Dokploy UI):
+#   - Create -> Compose (Docker Compose). Point it at this repo and set the compose
+#     path to docker-compose.dokploy.yml. Dokploy clones the repo and runs compose
+#     from that checkout, so the ./scripts and ./volumes bind-mounts below resolve
+#     natively (no Coolify-style "preserve repository" toggle needed here).
+#   - Environment tab: paste the secrets from `./scripts/gen-secrets.sh`
 #     (JWT_SECRET, ANON_KEY, SERVICE_ROLE_KEY, POSTGRES_PASSWORD, SECRET_KEY_BASE,
-#     VAULT_ENC_KEY, DASHBOARD_USERNAME/PASSWORD, CRON_SECRET). The three URL vars
-#     (app site, Kong public, auth external) are auto-generated — do NOT set them.
-#   - Deploy. Coolify assigns the app + Kong domains; open the app domain.
+#     VAULT_ENC_KEY, DASHBOARD_USERNAME/PASSWORD, CRON_SECRET) AND the two URLs:
+#         APP_URL=https://<your app domain>
+#         SUPABASE_PUBLIC_URL=https://<your kong domain>
+#     Dokploy writes these to a .env next to the compose, feeding ${VAR} below.
+#   - Domains tab: add TWO domains ->
+#         service `app`  -> container port 3000
+#         service `kong` -> container port 8000
+#     (These must equal APP_URL / SUPABASE_PUBLIC_URL above.)
+#   - Keep "Isolated Deployments" OFF: the realtime service pins a fixed
+#     container_name (Supabase requires that Erlang node name) which name-mangling
+#     would break.
+#   - Deploy, then open APP_URL.
 #
 # TROUBLESHOOTING (db-init):
-#   - exit 126: see the "Preserve Repository During Deployment" note above.
+#   - exit 126 ("cannot execute"): the bind-mounted script wasn't found — confirm
+#     the compose path points inside the cloned repo so ./scripts is present.
 #   - "schema \"vault\" does not exist": the Postgres data volume was initialized
-#     by an earlier broken deploy (no Vault). Stop the resource, delete its
-#     db-data volume, redeploy fresh — the image's initdb provisions Vault only on
-#     a first-boot empty data dir.
-#
-# NOTE ON THE MAGIC VARS: declaring `SERVICE_URL_<ID>_<PORT>` inside a service's
-# environment is what tells Coolify "generate a domain for THIS service and route
-# it to <PORT>". If your Coolify build doesn't pick them up from the compose,
-# assign the domain to the `app` (port 3000) and `kong` (port 8000) services in
-# the Coolify UI instead — same result.
+#     by an earlier broken deploy (no Vault). Stop the stack, delete its db-data
+#     volume, redeploy fresh — the image's initdb provisions Vault only on a
+#     first-boot empty data dir.
 name: envmanager
 
 services:
   # ---------------------------------------------------------------------------
   # Bundled Postgres (the database). Holds Vault key material — back up its volume.
-  # Internal only: reachable as db:5432 on the Coolify network. No host port.
+  # Internal only: reachable as db:5432 on the stack network. No host port.
   # ---------------------------------------------------------------------------
   db:
     image: supabase/postgres:15.8.1.085
@@ -105,8 +108,7 @@ services:
 
   # ---------------------------------------------------------------------------
   # Kong API gateway — the single public front door for auth/rest/realtime/
-  # storage/functions. Coolify gives it a domain via SERVICE_URL_KONG_8000 and
-  # routes Traefik -> container port 8000 (TLS terminated by Traefik).
+  # storage/functions. Attach a Dokploy domain -> service `kong`, port 8000.
   # ---------------------------------------------------------------------------
   kong:
     image: kong/kong:3.9.1
@@ -116,9 +118,6 @@ services:
         condition: service_completed_successfully
     entrypoint: ["bash", "/home/kong/kong-entrypoint.sh"]
     environment:
-      # Coolify magic var: generate a public https domain for this service and
-      # route it to port 8000. ${SERVICE_URL_KONG} (below/elsewhere) is that URL.
-      SERVICE_URL_KONG_8000: ""
       KONG_DATABASE: "off"
       KONG_DECLARATIVE_CONFIG: /usr/local/kong/kong.yml
       KONG_DNS_ORDER: LAST,A,CNAME
@@ -157,11 +156,11 @@ services:
       GOTRUE_API_HOST: 0.0.0.0
       GOTRUE_API_PORT: 9999
       # Auth's external URL is the public Kong domain (auth is served under it).
-      API_EXTERNAL_URL: ${SERVICE_URL_KONG}
+      API_EXTERNAL_URL: ${SUPABASE_PUBLIC_URL}
       GOTRUE_DB_DRIVER: postgres
       GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
-      GOTRUE_SITE_URL: ${SERVICE_URL_APP}
-      GOTRUE_URI_ALLOW_LIST: "${SERVICE_URL_APP},${SERVICE_URL_APP}/auth/callback,${SERVICE_URL_APP}/dashboard"
+      GOTRUE_SITE_URL: ${APP_URL}
+      GOTRUE_URI_ALLOW_LIST: "${APP_URL},${APP_URL}/auth/callback,${APP_URL}/dashboard"
       GOTRUE_JWT_SECRET: ${JWT_SECRET}
       GOTRUE_JWT_EXP: 3600
       GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
@@ -170,7 +169,7 @@ services:
       GOTRUE_EXTERNAL_GOOGLE_ENABLED: ${GOOGLE_OAUTH_ENABLED:-false}
       GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOTRUE_EXTERNAL_GOOGLE_SECRET: ${GOOGLE_CLIENT_SECRET}
-      GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: ${SERVICE_URL_KONG}/auth/v1/callback
+      GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: ${SUPABASE_PUBLIC_URL}/auth/v1/callback
       GOTRUE_SMTP_HOST: ""
       GOTRUE_SMTP_ADMIN_EMAIL: ${MAILGUN_FROM_EMAIL}
 
@@ -197,6 +196,9 @@ services:
 
   # ---------------------------------------------------------------------------
   # Realtime
+  # ponytail: container_name is pinned on purpose — Supabase seeds the tenant
+  # under this exact Erlang node name; renaming it breaks realtime. Keep Dokploy
+  # "Isolated Deployments" OFF so it isn't prefixed.
   # ---------------------------------------------------------------------------
   realtime:
     container_name: realtime-dev.supabase-realtime
@@ -306,7 +308,7 @@ services:
   # ---------------------------------------------------------------------------
   # Studio (DB admin UI). INTERNAL ONLY — no domain. It is unauthenticated when
   # reached directly, so it is deliberately not exposed. To use it, add a domain
-  # + auth in the Coolify UI, or tunnel to it. Reached in-network as studio:3000.
+  # + auth in the Dokploy UI, or tunnel to it. Reached in-network as studio:3000.
   # ---------------------------------------------------------------------------
   studio:
     image: supabase/studio:2025.06.02-sha-8f2993d
@@ -325,7 +327,7 @@ services:
       DEFAULT_ORGANIZATION_NAME: EnvManager
       DEFAULT_PROJECT_NAME: EnvManager
       SUPABASE_URL: http://kong:8000
-      SUPABASE_PUBLIC_URL: ${SERVICE_URL_KONG}
+      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL}
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
       AUTH_JWT_SECRET: ${JWT_SECRET}
@@ -348,7 +350,7 @@ services:
     environment:
       JWT_SECRET: ${JWT_SECRET}
       SUPABASE_URL: http://kong:8000
-      SUPABASE_PUBLIC_URL: ${SERVICE_URL_KONG}
+      SUPABASE_PUBLIC_URL: ${SUPABASE_PUBLIC_URL}
       SUPABASE_ANON_KEY: ${ANON_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
       SUPABASE_JWT_SECRET: ${JWT_SECRET}
@@ -369,7 +371,7 @@ services:
 
   # ---------------------------------------------------------------------------
   # The EnvManager Nuxt app. Pulls the published EM_SELF_HOSTED=true SPA image.
-  # Coolify gives it a domain via SERVICE_URL_APP_3000 (Traefik -> port 3000).
+  # Attach a Dokploy domain -> service `app`, port 3000.
   # ---------------------------------------------------------------------------
   app:
     # Pinning: swap :latest for a version tag (e.g. :1.0.0) for reproducible deploys.
@@ -391,18 +393,16 @@ services:
       start_period: 30s
       retries: 5
     environment:
-      # Coolify magic var: generate the app's public https domain, route to 3000.
-      SERVICE_URL_APP_3000: ""
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: 3000
       EM_SELF_HOSTED: "true"
       NUXT_PUBLIC_APP_NAME: ${NUXT_PUBLIC_APP_NAME:-EnvManager}
-      NUXT_PUBLIC_SITE_URL: ${SERVICE_URL_APP}
+      NUXT_PUBLIC_SITE_URL: ${APP_URL}
       # Browser-reachable Supabase gateway = the public Kong domain + anon key.
-      SUPABASE_URL: ${SERVICE_URL_KONG}
+      SUPABASE_URL: ${SUPABASE_PUBLIC_URL}
       SUPABASE_KEY: ${ANON_KEY}
-      NUXT_PUBLIC_SUPABASE_URL: ${SERVICE_URL_KONG}
+      NUXT_PUBLIC_SUPABASE_URL: ${SUPABASE_PUBLIC_URL}
       NUXT_PUBLIC_SUPABASE_KEY: ${ANON_KEY}
       SUPABASE_SECRET_KEY: ${SERVICE_ROLE_KEY}
       SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
