@@ -29,3 +29,26 @@ export const isWorkspaceLocked = (selfHosted: boolean, locked: boolean): boolean
 /** Registration is allowed in SaaS mode, or in self-hosted mode only for the first user. */
 export const canRegister = (selfHosted: boolean, isFirstUser: boolean): boolean =>
   !selfHosted || isFirstUser
+
+/** Which OAuth login buttons to show. */
+export interface OAuthVisibility {
+  github: boolean
+  google: boolean
+  /** True when at least one provider is shown (gate the whole OAuth block on this). */
+  any: boolean
+}
+
+/**
+ * OAuth buttons always show in SaaS mode (hosted providers are wired). On a
+ * self-hosted instance each provider only shows when its NUXT_PUBLIC_OAUTH_*_ENABLED
+ * flag is set — so an operator who hasn't configured GitHub/Google doesn't get dead buttons.
+ */
+export const oauthVisibility = (
+  selfHosted: boolean,
+  githubEnabled: boolean,
+  googleEnabled: boolean,
+): OAuthVisibility => {
+  const github = !selfHosted || githubEnabled
+  const google = !selfHosted || googleEnabled
+  return { github, google, any: github || google }
+}

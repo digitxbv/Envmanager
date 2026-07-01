@@ -39,24 +39,26 @@
           Enter your details below to create your account
         </p>
       </div>
-      <div class="grid grid-cols-2 gap-4">
-        <Button variant="outline" class="w-full" @click="handleGithubSignup" :disabled="isDisabled || !isHydrated">
-          <Icon name="lucide:github" class="mr-2 h-4 w-4" />
-          GitHub
-        </Button>
-        <Button variant="outline" class="w-full" @click="handleGoogleSignup" :disabled="isDisabled || !isHydrated">
-          <Icon name="logos:google-icon" class="mr-2 h-4 w-4" />
-          Google
-        </Button>
-      </div>
-      <div class="relative">
-        <div class="absolute inset-0 flex items-center">
-          <span class="w-full border-t"></span>
+      <template v-if="oauth.any">
+        <div class="grid gap-4" :class="oauth.github && oauth.google ? 'grid-cols-2' : 'grid-cols-1'">
+          <Button v-if="oauth.github" variant="outline" class="w-full" @click="handleGithubSignup" :disabled="isDisabled || !isHydrated">
+            <Icon name="lucide:github" class="mr-2 h-4 w-4" />
+            GitHub
+          </Button>
+          <Button v-if="oauth.google" variant="outline" class="w-full" @click="handleGoogleSignup" :disabled="isDisabled || !isHydrated">
+            <Icon name="logos:google-icon" class="mr-2 h-4 w-4" />
+            Google
+          </Button>
         </div>
-        <div class="relative flex justify-center text-xs uppercase">
-          <span class="bg-card px-2 text-muted-foreground">Or with email</span>
+        <div class="relative">
+          <div class="absolute inset-0 flex items-center">
+            <span class="w-full border-t"></span>
+          </div>
+          <div class="relative flex justify-center text-xs uppercase">
+            <span class="bg-card px-2 text-muted-foreground">Or with email</span>
+          </div>
         </div>
-      </div>
+      </template>
       <form @submit.prevent="handleRegister" class="space-y-4">
         <div class="space-y-2">
           <label for="email" class="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">
@@ -150,7 +152,7 @@ import PasswordInput from '@/components/ui/PasswordInput.vue'
 import UnifiedAuth from '@/components/auth/UnifiedAuth.vue'
 import { validatePassword } from '~/composables/usePasswordValidation'
 import { useFormLoading } from '~/composables/useFormLoading'
-import { canRegister } from '~/utils/selfHosted'
+import { canRegister, oauthVisibility } from '~/utils/selfHosted'
 
 const route = useRoute()
 const client = useSupabaseClient()
@@ -187,6 +189,13 @@ onMounted(() => {
 // Self-hosted registration gate
 const config = useRuntimeConfig()
 const selfHosted = Boolean(config.public.selfHosted)
+
+// Which OAuth buttons to show (self-hosted hides unconfigured providers).
+const oauth = oauthVisibility(
+  selfHosted,
+  Boolean(config.public.oauthGithubEnabled),
+  Boolean(config.public.oauthGoogleEnabled),
+)
 const registrationAllowed = ref(true)
 const gateChecked = ref(!selfHosted) // SaaS needs no gate check
 

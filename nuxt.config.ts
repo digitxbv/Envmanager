@@ -232,6 +232,10 @@ export default defineNuxtConfig({
       posthogHost: process.env.POSTHOG_HOST || 'https://e.envmanager.com',
       githubAppName: process.env.NUXT_PUBLIC_GITHUB_APP_NAME || 'EnvManager',
       githubClientId: process.env.NUXT_PUBLIC_GITHUB_CLIENT_ID || '',
+      // Self-hosted OAuth login toggles. SaaS ignores these (buttons always show);
+      // self-hosted shows a provider's button only when its flag is 'true'.
+      oauthGithubEnabled: process.env.NUXT_PUBLIC_OAUTH_GITHUB_ENABLED === 'true',
+      oauthGoogleEnabled: process.env.NUXT_PUBLIC_OAUTH_GOOGLE_ENABLED === 'true',
       cookiebotCbid: process.env.NUXT_PUBLIC_COOKIEBOT_CBID || '',
       gtmId: process.env.NUXT_PUBLIC_GTM_ID || '',
       sentry: {

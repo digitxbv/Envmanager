@@ -170,8 +170,32 @@ services:
       GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOTRUE_EXTERNAL_GOOGLE_SECRET: ${GOOGLE_CLIENT_SECRET}
       GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: ${SUPABASE_PUBLIC_URL}/auth/v1/callback
+      # Optional GitHub OAuth login (separate from the GitHub App integration).
+      GOTRUE_EXTERNAL_GITHUB_ENABLED: ${GITHUB_OAUTH_ENABLED:-false}
+      GOTRUE_EXTERNAL_GITHUB_CLIENT_ID: ${GITHUB_OAUTH_CLIENT_ID}
+      GOTRUE_EXTERNAL_GITHUB_SECRET: ${GITHUB_OAUTH_CLIENT_SECRET}
+      GOTRUE_EXTERNAL_GITHUB_REDIRECT_URI: ${SUPABASE_PUBLIC_URL}/auth/v1/callback
       GOTRUE_SMTP_HOST: ""
       GOTRUE_SMTP_ADMIN_EMAIL: ${MAILGUN_FROM_EMAIL}
+
+  # ---------------------------------------------------------------------------
+  # One-shot: create the initial admin user via GoTrue's admin API (idempotent).
+  # No-op unless ADMIN_EMAIL + ADMIN_PASSWORD are set. Runs once auth is healthy;
+  # the user logs in and completes onboarding to become the org owner.
+  # ---------------------------------------------------------------------------
+  create-admin:
+    image: curlimages/curl:8.11.1
+    restart: "no"
+    depends_on:
+      auth:
+        condition: service_healthy
+    environment:
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+    entrypoint: ["sh", "/usr/local/bin/create-admin.sh"]
+    volumes:
+      - ./scripts/create-admin.sh:/usr/local/bin/create-admin.sh:ro
 
   # ---------------------------------------------------------------------------
   # PostgREST (REST API)
@@ -410,6 +434,10 @@ services:
       CRON_SECRET: ${CRON_SECRET}
       NUXT_PUBLIC_GITHUB_APP_NAME: ${NUXT_PUBLIC_GITHUB_APP_NAME}
       NUXT_PUBLIC_GITHUB_CLIENT_ID: ${NUXT_PUBLIC_GITHUB_CLIENT_ID}
+      # Show the OAuth login buttons — same one flag per provider that enables the
+      # GoTrue provider above, so a shown button always works.
+      NUXT_PUBLIC_OAUTH_GITHUB_ENABLED: ${GITHUB_OAUTH_ENABLED:-false}
+      NUXT_PUBLIC_OAUTH_GOOGLE_ENABLED: ${GOOGLE_OAUTH_ENABLED:-false}
 
 # Named volumes: db-config holds the pgsodium/Vault root key (persist + back up);
 # deno-cache is the edge runtime's module cache.

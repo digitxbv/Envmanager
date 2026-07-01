@@ -46,26 +46,28 @@
     </div>
 
     <!-- OAuth -->
-    <div class="grid grid-cols-2 gap-4">
-      <Button variant="outline" class="w-full" @click="handleOAuth('github')" :disabled="isDisabled || !isHydrated">
-        <Icon name="lucide:github" class="mr-2 h-4 w-4" />
-        GitHub
-      </Button>
-      <Button variant="outline" class="w-full" @click="handleOAuth('google')" :disabled="isDisabled || !isHydrated">
-        <Icon name="logos:google-icon" class="mr-2 h-4 w-4" />
-        Google
-      </Button>
-    </div>
+    <template v-if="oauth.any">
+      <div class="grid gap-4" :class="oauth.github && oauth.google ? 'grid-cols-2' : 'grid-cols-1'">
+        <Button v-if="oauth.github" variant="outline" class="w-full" @click="handleOAuth('github')" :disabled="isDisabled || !isHydrated">
+          <Icon name="lucide:github" class="mr-2 h-4 w-4" />
+          GitHub
+        </Button>
+        <Button v-if="oauth.google" variant="outline" class="w-full" @click="handleOAuth('google')" :disabled="isDisabled || !isHydrated">
+          <Icon name="logos:google-icon" class="mr-2 h-4 w-4" />
+          Google
+        </Button>
+      </div>
 
-    <!-- Divider -->
-    <div class="relative">
-      <div class="absolute inset-0 flex items-center">
-        <span class="w-full border-t"></span>
+      <!-- Divider -->
+      <div class="relative">
+        <div class="absolute inset-0 flex items-center">
+          <span class="w-full border-t"></span>
+        </div>
+        <div class="relative flex justify-center text-xs uppercase">
+          <span class="bg-card px-2 text-muted-foreground">Or with email</span>
+        </div>
       </div>
-      <div class="relative flex justify-center text-xs uppercase">
-        <span class="bg-card px-2 text-muted-foreground">Or with email</span>
-      </div>
-    </div>
+    </template>
 
     <!-- Form -->
     <form @submit.prevent="handleSubmit" class="space-y-4">
@@ -178,6 +180,7 @@ import Button from '@/components/ui/Button.vue'
 import PasswordInput from '@/components/ui/PasswordInput.vue'
 import { validatePassword } from '~/composables/usePasswordValidation'
 import { useFormLoading } from '~/composables/useFormLoading'
+import { oauthVisibility } from '~/utils/selfHosted'
 
 const props = defineProps<{
   initialMode: 'signup' | 'login'
@@ -185,6 +188,14 @@ const props = defineProps<{
 
 const route = useRoute()
 const client = useSupabaseClient()
+
+// Which OAuth buttons to show (self-hosted hides unconfigured providers).
+const config = useRuntimeConfig()
+const oauth = oauthVisibility(
+  Boolean(config.public.selfHosted),
+  Boolean(config.public.oauthGithubEnabled),
+  Boolean(config.public.oauthGoogleEnabled),
+)
 const { $toast } = useNuxtApp()
 const { track, identify, register: registerProps } = usePostHog()
 const { getCampaignParams } = useTrackingParams()

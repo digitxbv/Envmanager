@@ -4,6 +4,7 @@ import {
   effectiveLimits,
   isWorkspaceLocked,
   canRegister,
+  oauthVisibility,
 } from '../../app/utils/selfHosted'
 
 describe('SELF_HOSTED_LIMITS', () => {
@@ -49,5 +50,18 @@ describe('canRegister', () => {
   it('in self-hosted mode only allows the first user', () => {
     expect(canRegister(true, true)).toBe(true)
     expect(canRegister(true, false)).toBe(false)
+  })
+})
+
+describe('oauthVisibility', () => {
+  it('shows both providers in SaaS mode regardless of the flags', () => {
+    expect(oauthVisibility(false, false, false)).toEqual({ github: true, google: true, any: true })
+  })
+
+  it('in self-hosted mode shows only the enabled providers', () => {
+    expect(oauthVisibility(true, false, false)).toEqual({ github: false, google: false, any: false })
+    expect(oauthVisibility(true, true, false)).toEqual({ github: true, google: false, any: true })
+    expect(oauthVisibility(true, false, true)).toEqual({ github: false, google: true, any: true })
+    expect(oauthVisibility(true, true, true)).toEqual({ github: true, google: true, any: true })
   })
 })

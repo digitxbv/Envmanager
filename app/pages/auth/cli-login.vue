@@ -61,25 +61,27 @@
         </Button>
       </form>
 
-      <div class="relative">
-        <div class="absolute inset-0 flex items-center">
-          <span class="w-full border-t"></span>
+      <template v-if="oauth.any">
+        <div class="relative">
+          <div class="absolute inset-0 flex items-center">
+            <span class="w-full border-t"></span>
+          </div>
+          <div class="relative flex justify-center text-xs uppercase">
+            <span class="bg-card px-2 text-muted-foreground">Or continue with</span>
+          </div>
         </div>
-        <div class="relative flex justify-center text-xs uppercase">
-          <span class="bg-card px-2 text-muted-foreground">Or continue with</span>
-        </div>
-      </div>
 
-      <div class="grid grid-cols-2 gap-4">
-        <Button variant="outline" class="w-full" @click="handleOAuthLogin('github')" :disabled="loading">
-          <Icon name="lucide:github" class="mr-2 h-4 w-4" />
-          GitHub
-        </Button>
-        <Button variant="outline" class="w-full" @click="handleOAuthLogin('google')" :disabled="loading">
-          <Icon name="logos:google-icon" class="mr-2 h-4 w-4" />
-          Google
-        </Button>
-      </div>
+        <div class="grid gap-4" :class="oauth.github && oauth.google ? 'grid-cols-2' : 'grid-cols-1'">
+          <Button v-if="oauth.github" variant="outline" class="w-full" @click="handleOAuthLogin('github')" :disabled="loading">
+            <Icon name="lucide:github" class="mr-2 h-4 w-4" />
+            GitHub
+          </Button>
+          <Button v-if="oauth.google" variant="outline" class="w-full" @click="handleOAuthLogin('google')" :disabled="loading">
+            <Icon name="logos:google-icon" class="mr-2 h-4 w-4" />
+            Google
+          </Button>
+        </div>
+      </template>
 
       <p class="text-xs text-center text-muted-foreground">
         {{ isManualMode ? 'After signing in, a code will be shown for you to paste into your terminal.' : 'After signing in, you\'ll be redirected back to your terminal.' }}
@@ -95,11 +97,20 @@ definePageMeta({
 
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
+import { oauthVisibility } from '~/utils/selfHosted'
 
 const client = useSupabaseClient()
 const user = useSupabaseUser()
 const route = useRoute()
 const { $toast } = useNuxtApp()
+
+// Which OAuth buttons to show (self-hosted hides unconfigured providers).
+const config = useRuntimeConfig()
+const oauth = oauthVisibility(
+  Boolean(config.public.selfHosted),
+  Boolean(config.public.oauthGithubEnabled),
+  Boolean(config.public.oauthGoogleEnabled),
+)
 
 const email = ref('')
 const password = ref('')

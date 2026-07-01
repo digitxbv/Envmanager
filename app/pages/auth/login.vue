@@ -55,24 +55,26 @@
         Sign In
       </Button>
     </form>
-    <div class="relative">
-      <div class="absolute inset-0 flex items-center">
-        <span class="w-full border-t"></span>
+    <template v-if="oauth.any">
+      <div class="relative">
+        <div class="absolute inset-0 flex items-center">
+          <span class="w-full border-t"></span>
+        </div>
+        <div class="relative flex justify-center text-xs uppercase">
+          <span class="bg-card px-2 text-muted-foreground">Or continue with</span>
+        </div>
       </div>
-      <div class="relative flex justify-center text-xs uppercase">
-        <span class="bg-card px-2 text-muted-foreground">Or continue with</span>
+      <div class="grid gap-4" :class="oauth.github && oauth.google ? 'grid-cols-2' : 'grid-cols-1'">
+        <Button v-if="oauth.github" variant="outline" class="w-full" @click="handleGithubLogin" :disabled="loading">
+          <Icon name="lucide:github" class="mr-2 h-4 w-4" />
+          GitHub
+        </Button>
+        <Button v-if="oauth.google" variant="outline" class="w-full" @click="handleGoogleLogin" :disabled="loading">
+          <Icon name="logos:google-icon" class="mr-2 h-4 w-4" />
+          Google
+        </Button>
       </div>
-    </div>
-    <div class="grid grid-cols-2 gap-4">
-      <Button variant="outline" class="w-full" @click="handleGithubLogin" :disabled="loading">
-        <Icon name="lucide:github" class="mr-2 h-4 w-4" />
-        GitHub
-      </Button>
-      <Button variant="outline" class="w-full" @click="handleGoogleLogin" :disabled="loading">
-        <Icon name="logos:google-icon" class="mr-2 h-4 w-4" />
-        Google
-      </Button>
-    </div>
+    </template>
     <div class="text-center text-sm">
       Don't have an account?
       <NuxtLink :to="redirectUrl ? `/auth/register?redirect=${encodeURIComponent(redirectUrl)}` : '/auth/register'" class="text-primary hover:text-primary/90 hover:underline font-medium ml-1">
@@ -90,9 +92,18 @@ definePageMeta({
 import Input from '@/components/ui/Input.vue'
 import Button from '@/components/ui/Button.vue'
 import UnifiedAuth from '@/components/auth/UnifiedAuth.vue'
+import { oauthVisibility } from '~/utils/selfHosted'
 
 const route = useRoute()
 const client = useSupabaseClient()
+
+// Which OAuth buttons to show (self-hosted hides unconfigured providers).
+const config = useRuntimeConfig()
+const oauth = oauthVisibility(
+  Boolean(config.public.selfHosted),
+  Boolean(config.public.oauthGithubEnabled),
+  Boolean(config.public.oauthGoogleEnabled),
+)
 const { $toast } = useNuxtApp()
 const { track, identify, getFeatureFlag, onFeatureFlags } = usePostHog()
 const { signInWithLockout } = useAuthWithLockout()
