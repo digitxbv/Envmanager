@@ -1,0 +1,405 @@
+# docker-compose.coolify.yml
+# EnvManager self-host stack, tuned for Coolify (https://coolify.io).
+#
+# HOW THIS DIFFERS FROM docker-compose.yml (the bare-VM file):
+#   1. NO host `ports:` anywhere. Coolify puts every service on one internal
+#      network (they reach each other by name: db:5432, kong:8000, ...) and
+#      exposes the public ones through its own Traefik proxy. Publishing host
+#      ports here only collides with Coolify's own services (its Postgres owns
+#      host 5432, Traefik owns 8080, etc.).
+#   2. Only TWO services get a public domain — `app` and `kong` — via Coolify's
+#      "magic" env vars `SERVICE_URL_APP_3000` / `SERVICE_URL_KONG_8000`. Coolify
+#      generates an https domain for each and routes Traefik to that container
+#      port. `${SERVICE_URL_APP}` / `${SERVICE_URL_KONG}` then hold the full URL,
+#      referenced below wherever the app/auth need a browser-reachable address.
+#   3. `app` PULLS the published image (ghcr.io/digitxbv/envmanager) instead of
+#      building — the image is already the EM_SELF_HOSTED=true SPA build, and all
+#      values are injected at runtime. No build step = fast deploys.
+#
+# SETUP (Coolify UI):
+#   - New Resource -> Docker Compose -> point at this repo, set this file as the
+#     compose path.
+#   - Paste the secrets from `./scripts/gen-secrets.sh` into the resource env
+#     (JWT_SECRET, ANON_KEY, SERVICE_ROLE_KEY, POSTGRES_PASSWORD, SECRET_KEY_BASE,
+#     VAULT_ENC_KEY, DASHBOARD_USERNAME/PASSWORD, CRON_SECRET). The three URL vars
+#     (app site, Kong public, auth external) are auto-generated — do NOT set them.
+#   - Deploy. Coolify assigns the app + Kong domains; open the app domain.
+#
+# NOTE ON THE MAGIC VARS: declaring `SERVICE_URL_<ID>_<PORT>` inside a service's
+# environment is what tells Coolify "generate a domain for THIS service and route
+# it to <PORT>". If your Coolify build doesn't pick them up from the compose,
+# assign the domain to the `app` (port 3000) and `kong` (port 8000) services in
+# the Coolify UI instead — same result.
+name: envmanager
+
+services:
+  # ---------------------------------------------------------------------------
+  # Bundled Postgres (the database). Holds Vault key material — back up its volume.
+  # Internal only: reachable as db:5432 on the Coolify network. No host port.
+  # ---------------------------------------------------------------------------
+  db:
+    image: supabase/postgres:15.8.1.085
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    environment:
+      POSTGRES_HOST: /var/run/postgresql
+      PGPORT: ${POSTGRES_PORT}
+      POSTGRES_PORT: ${POSTGRES_PORT}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB}
+      POSTGRES_DB: ${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXP: 3600
+      VAULT_ENC_KEY: ${VAULT_ENC_KEY}
+    volumes:
+      - ./volumes/db/realtime.sql:/docker-entrypoint-initdb.d/migrations/99-realtime.sql:Z
+      - ./volumes/db/webhooks.sql:/docker-entrypoint-initdb.d/init-scripts/98-webhooks.sql:Z
+      - ./volumes/db/roles.sql:/docker-entrypoint-initdb.d/init-scripts/99-roles.sql:Z
+      - ./volumes/db/jwt.sql:/docker-entrypoint-initdb.d/init-scripts/99-jwt.sql:Z
+      - ./volumes/db/_supabase.sql:/docker-entrypoint-initdb.d/migrations/97-_supabase.sql:Z
+      - ./volumes/db/logs.sql:/docker-entrypoint-initdb.d/migrations/99-logs.sql:Z
+      - ./volumes/db/pooler.sql:/docker-entrypoint-initdb.d/migrations/99-pooler.sql:Z
+      - ./volumes/db/data:/var/lib/postgresql/data:Z
+      - db-config:/etc/postgresql-custom
+    command:
+      - postgres
+      - -c
+      - config_file=/etc/postgresql/postgresql.conf
+      - -c
+      - log_min_messages=fatal
+
+  # ---------------------------------------------------------------------------
+  # One-shot: apply EnvManager migrations + run self-host bootstrap, then exit.
+  # ---------------------------------------------------------------------------
+  db-init:
+    image: supabase/postgres:15.8.1.085
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres}
+    volumes:
+      - ./supabase/migrations:/migrations:ro
+      - ./scripts/self-host-bootstrap.sql:/bootstrap/self-host-bootstrap.sql:ro
+      - ./scripts/db-init-entrypoint.sh:/usr/local/bin/db-init-entrypoint.sh:ro
+    entrypoint: ["/bin/bash", "/usr/local/bin/db-init-entrypoint.sh"]
+
+  # ---------------------------------------------------------------------------
+  # Kong API gateway — the single public front door for auth/rest/realtime/
+  # storage/functions. Coolify gives it a domain via SERVICE_URL_KONG_8000 and
+  # routes Traefik -> container port 8000 (TLS terminated by Traefik).
+  # ---------------------------------------------------------------------------
+  kong:
+    image: kong/kong:3.9.1
+    restart: unless-stopped
+    depends_on:
+      db-init:
+        condition: service_completed_successfully
+    entrypoint: ["bash", "/home/kong/kong-entrypoint.sh"]
+    environment:
+      # Coolify magic var: generate a public https domain for this service and
+      # route it to port 8000. ${SERVICE_URL_KONG} (below/elsewhere) is that URL.
+      SERVICE_URL_KONG_8000: ""
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /usr/local/kong/kong.yml
+      KONG_DNS_ORDER: LAST,A,CNAME
+      KONG_PLUGINS: request-transformer,cors,key-auth,acl,basic-auth,request-termination,ip-restriction,post-function
+      KONG_NGINX_PROXY_PROXY_BUFFER_SIZE: 160k
+      KONG_NGINX_PROXY_PROXY_BUFFERS: 64 160k
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_PUBLISHABLE_KEY: ""
+      SUPABASE_SECRET_KEY: ""
+      ANON_KEY_ASYMMETRIC: ""
+      SERVICE_ROLE_KEY_ASYMMETRIC: ""
+      DASHBOARD_USERNAME: ${DASHBOARD_USERNAME}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
+    volumes:
+      - ./volumes/api/kong.yml:/home/kong/temp.yml:ro
+      - ./volumes/api/kong-entrypoint.sh:/home/kong/kong-entrypoint.sh:ro
+
+  # ---------------------------------------------------------------------------
+  # GoTrue (auth)
+  # ---------------------------------------------------------------------------
+  auth:
+    image: supabase/gotrue:v2.177.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9999/health"]
+      timeout: 5s
+      interval: 5s
+      retries: 5
+    environment:
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: 9999
+      # Auth's external URL is the public Kong domain (auth is served under it).
+      API_EXTERNAL_URL: ${SERVICE_URL_KONG}
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      GOTRUE_SITE_URL: ${SERVICE_URL_APP}
+      GOTRUE_URI_ALLOW_LIST: "${SERVICE_URL_APP},${SERVICE_URL_APP}/auth/callback,${SERVICE_URL_APP}/dashboard"
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: 3600
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_DISABLE_SIGNUP: "false"
+      GOTRUE_MAILER_AUTOCONFIRM: "true"
+      GOTRUE_EXTERNAL_GOOGLE_ENABLED: ${GOOGLE_OAUTH_ENABLED:-false}
+      GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOTRUE_EXTERNAL_GOOGLE_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOTRUE_EXTERNAL_GOOGLE_REDIRECT_URI: ${SERVICE_URL_KONG}/auth/v1/callback
+      GOTRUE_SMTP_HOST: ""
+      GOTRUE_SMTP_ADMIN_EMAIL: ${MAILGUN_FROM_EMAIL}
+
+  # ---------------------------------------------------------------------------
+  # PostgREST (REST API)
+  # ---------------------------------------------------------------------------
+  rest:
+    image: postgrest/postgrest:v12.2.12
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${POSTGRES_PASSWORD}@db:5432/postgres
+      PGRST_DB_SCHEMAS: public,graphql_public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_USE_LEGACY_GUCS: "false"
+      PGRST_APP_SETTINGS_JWT_SECRET: ${JWT_SECRET}
+      PGRST_APP_SETTINGS_JWT_EXP: 3600
+    command: ["postgrest"]
+
+  # ---------------------------------------------------------------------------
+  # Realtime
+  # ---------------------------------------------------------------------------
+  realtime:
+    container_name: realtime-dev.supabase-realtime
+    image: supabase/realtime:v2.76.5
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sSfL --head -o /dev/null -H \"Authorization: Bearer ${ANON_KEY}\" http://localhost:4000/api/tenants/realtime-dev/health"]
+      timeout: 5s
+      interval: 30s
+      retries: 3
+      start_period: 10s
+    environment:
+      PORT: 4000
+      DB_HOST: ${POSTGRES_HOST}
+      DB_PORT: ${POSTGRES_PORT}
+      DB_USER: supabase_admin
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
+      DB_ENC_KEY: supabaserealtime
+      API_JWT_SECRET: ${JWT_SECRET}
+      SECRET_KEY_BASE: ${SECRET_KEY_BASE}
+      ERL_AFLAGS: -proto_dist inet_tcp
+      DNS_NODES: "''"
+      RLIMIT_NOFILE: "10000"
+      APP_NAME: realtime
+      SEED_SELF_HOST: "true"
+      RUN_JANITOR: "true"
+
+  # ---------------------------------------------------------------------------
+  # Storage + imgproxy
+  # ---------------------------------------------------------------------------
+  storage:
+    image: supabase/storage-api:v1.19.3
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+      rest:
+        condition: service_started
+      imgproxy:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/status"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    environment:
+      ANON_KEY: ${ANON_KEY}
+      SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      POSTGREST_URL: http://rest:3000
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      DATABASE_URL: postgres://supabase_storage_admin:${POSTGRES_PASSWORD}@db:5432/postgres
+      FILE_SIZE_LIMIT: 52428800
+      STORAGE_BACKEND: file
+      FILE_STORAGE_BACKEND_PATH: /var/lib/storage
+      TENANT_ID: stub
+      REGION: stub
+      GLOBAL_S3_BUCKET: stub
+      ENABLE_IMAGE_TRANSFORMATION: "true"
+      IMGPROXY_URL: http://imgproxy:5001
+    volumes:
+      - ./volumes/storage:/var/lib/storage
+
+  imgproxy:
+    image: darthsim/imgproxy:v3.8.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "imgproxy", "health"]
+      timeout: 5s
+      interval: 5s
+      retries: 3
+    environment:
+      IMGPROXY_BIND: ":5001"
+      IMGPROXY_LOCAL_FILESYSTEM_ROOT: /
+      IMGPROXY_USE_ETAG: "true"
+      IMGPROXY_ENABLE_WEBP_DETECTION: "true"
+    volumes:
+      - ./volumes/storage:/var/lib/storage:ro
+
+  # ---------------------------------------------------------------------------
+  # postgres-meta (powers Studio)
+  # ---------------------------------------------------------------------------
+  meta:
+    image: supabase/postgres-meta:v0.91.0
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+    environment:
+      PG_META_PORT: 8080
+      PG_META_DB_HOST: ${POSTGRES_HOST}
+      PG_META_DB_PORT: ${POSTGRES_PORT}
+      PG_META_DB_NAME: ${POSTGRES_DB}
+      PG_META_DB_USER: supabase_admin
+      PG_META_DB_PASSWORD: ${POSTGRES_PASSWORD}
+
+  # ---------------------------------------------------------------------------
+  # Studio (DB admin UI). INTERNAL ONLY — no domain. It is unauthenticated when
+  # reached directly, so it is deliberately not exposed. To use it, add a domain
+  # + auth in the Coolify UI, or tunnel to it. Reached in-network as studio:3000.
+  # ---------------------------------------------------------------------------
+  studio:
+    image: supabase/studio:2025.06.02-sha-8f2993d
+    restart: unless-stopped
+    depends_on:
+      meta:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/api/platform/profile').then((r)=>{if(r.status!==200)throw new Error(r.status)})"]
+      timeout: 10s
+      interval: 5s
+      retries: 3
+    environment:
+      STUDIO_PG_META_URL: http://meta:8080
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      DEFAULT_ORGANIZATION_NAME: EnvManager
+      DEFAULT_PROJECT_NAME: EnvManager
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_PUBLIC_URL: ${SERVICE_URL_KONG}
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_KEY: ${SERVICE_ROLE_KEY}
+      AUTH_JWT_SECRET: ${JWT_SECRET}
+      DASHBOARD_USERNAME: ${DASHBOARD_USERNAME}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD}
+
+  # ---------------------------------------------------------------------------
+  # Edge Runtime (Deno) — serves OUR edge functions. Internal; behind Kong.
+  # ---------------------------------------------------------------------------
+  functions:
+    image: supabase/edge-runtime:v1.71.2
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+      kong:
+        condition: service_healthy
+    environment:
+      JWT_SECRET: ${JWT_SECRET}
+      SUPABASE_URL: http://kong:8000
+      SUPABASE_PUBLIC_URL: ${SERVICE_URL_KONG}
+      SUPABASE_ANON_KEY: ${ANON_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_JWT_SECRET: ${JWT_SECRET}
+      SUPABASE_DB_URL: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/postgres
+      VERIFY_JWT: "false"
+      CRON_SECRET: ${CRON_SECRET}
+      MAILGUN_API_KEY: ${MAILGUN_API_KEY}
+      MAILGUN_DOMAIN: ${MAILGUN_DOMAIN}
+      MAILGUN_FROM_EMAIL: ${MAILGUN_FROM_EMAIL}
+      MAILGUN_REGION: ${MAILGUN_REGION}
+      GITHUB_APP_ID: ${GITHUB_APP_ID}
+      GITHUB_APP_PRIVATE_KEY: ${GITHUB_APP_PRIVATE_KEY}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+    volumes:
+      - ./supabase/functions:/home/deno/functions:ro
+      - deno-cache:/root/.cache/deno
+    command: ["start", "--main-service", "/home/deno/functions/main"]
+
+  # ---------------------------------------------------------------------------
+  # The EnvManager Nuxt app. Pulls the published EM_SELF_HOSTED=true SPA image.
+  # Coolify gives it a domain via SERVICE_URL_APP_3000 (Traefik -> port 3000).
+  # ---------------------------------------------------------------------------
+  app:
+    # Pinning: swap :latest for a version tag (e.g. :1.0.0) for reproducible deploys.
+    image: ghcr.io/digitxbv/envmanager:latest
+    restart: unless-stopped
+    depends_on:
+      kong:
+        condition: service_started
+      auth:
+        condition: service_healthy
+      rest:
+        condition: service_started
+      db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-s", "-S", "http://localhost:3000/", "-o", "/dev/null"]
+      interval: 15s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    environment:
+      # Coolify magic var: generate the app's public https domain, route to 3000.
+      SERVICE_URL_APP_3000: ""
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      EM_SELF_HOSTED: "true"
+      NUXT_PUBLIC_APP_NAME: ${NUXT_PUBLIC_APP_NAME:-EnvManager}
+      NUXT_PUBLIC_SITE_URL: ${SERVICE_URL_APP}
+      # Browser-reachable Supabase gateway = the public Kong domain + anon key.
+      SUPABASE_URL: ${SERVICE_URL_KONG}
+      SUPABASE_KEY: ${ANON_KEY}
+      NUXT_PUBLIC_SUPABASE_URL: ${SERVICE_URL_KONG}
+      NUXT_PUBLIC_SUPABASE_KEY: ${ANON_KEY}
+      SUPABASE_SECRET_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_SERVICE_ROLE_KEY: ${SERVICE_ROLE_KEY}
+      SUPABASE_JWT_SECRET: ${JWT_SECRET}
+      CRON_SECRET: ${CRON_SECRET}
+      NUXT_PUBLIC_GITHUB_APP_NAME: ${NUXT_PUBLIC_GITHUB_APP_NAME}
+      NUXT_PUBLIC_GITHUB_CLIENT_ID: ${NUXT_PUBLIC_GITHUB_CLIENT_ID}
+
+# Named volumes: db-config holds the pgsodium/Vault root key (persist + back up);
+# deno-cache is the edge runtime's module cache.
+volumes:
+  db-config:
+  deno-cache:
